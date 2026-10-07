@@ -105,7 +105,12 @@ class BenchmarkDataset(Dataset):
         # - y indices
         # - num_classes
         # - num_features
-        self._fill(samples)
+        self._fill(
+    samples,
+    dataset_classes=list(
+        range(len(np.unique(labels)))
+    ),
+)
 
         # We do not use the original DeepGAN visualizers for the benchmark.
         # In particular, (x, y, t) must not be interpreted as spatial 3D data.
