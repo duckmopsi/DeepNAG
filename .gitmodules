@@ -4,3 +4,6 @@
 [submodule "external/JitGRU"]
 	path = external/JitGRU
 	url = https://github.com/Maghoumi/JitGRU.git
+[submodule "dataset_loader"]
+	path = dataset_loader
+	url = https://github.com/duckmopsi/dataset_loader.git
