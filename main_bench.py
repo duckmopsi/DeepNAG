@@ -479,6 +479,8 @@ def main():
             pos_bounds=config.get("pos_bounds"),
             velo_bounds=config.get("velo_bounds"),
             pad_value=config["pad_value"],
+            min_size=config.get("min_size"),
+            max_size=config.get("max_size")
         )
 
     finally:
