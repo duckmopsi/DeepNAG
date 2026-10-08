@@ -3,6 +3,7 @@ import argparse
 import yaml
 import numpy as np
 import torch
+from numba import cuda
 
 from options import Options
 from models.DeepGAN import DeepGAN
@@ -764,15 +765,20 @@ def main():
                 "CUDA was requested but is unavailable."
             )
 
-        device = torch.device(
-            "cuda:0"
-        )
+        torch.cuda.set_device(0)
+        device = torch.device("cuda:0")
+
+        _ = torch.empty(1, device=device)
+
+        cuda.select_device(0)
 
         print("\nUsing CUDA")
         print(
             f"GPU: "
             f"{torch.cuda.get_device_name(0)}"
         )
+        print(f"Torch device: {torch.cuda.current_device()}")
+        print(f"Numba device: {cuda.get_current_device()}")
 
     else:
 
