@@ -6,6 +6,7 @@ import torch
 
 from options import Options
 from models.DeepGAN import DeepGAN
+from models.DeepNAG import DeepNAG
 
 from dataset_loader.dataset import Dataset as GestureDataset
 from dataset_loader.pipeline import build_dataset_pipeline
@@ -478,6 +479,7 @@ def main():
             normalize=config["normalize"],
             pos_bounds=config.get("pos_bounds"),
             velo_bounds=config.get("velo_bounds"),
+            time_bounds=config.get("time_bounds"),
             pad_value=config["pad_value"],
             min_size=config.get("min_size"),
             max_size=config.get("max_size")
@@ -510,6 +512,54 @@ def main():
     )
 
     gesture_train, gesture_val, gesture_test = gesture_splits
+
+    print("Train shape:", gesture_train.shape)
+
+    for i, name in enumerate(["x", "y", "t"][:gesture_train.shape[-1]]):
+        values = gesture_train[..., i]
+        print(
+            f"{name}: "
+            f"min={values.min():.6f}, "
+            f"max={values.max():.6f}, "
+            f"mean={values.mean():.6f}"
+        )
+
+    if gesture_train.shape[-1] == 3:
+        t = gesture_train[..., 2]
+
+        print(
+            "t monotonic:",
+            np.mean(np.all(np.diff(t, axis=1) >= 0, axis=1))
+        )
+        print(
+            "t start:",
+            t[:, 0].min(),
+            t[:, 0].max()
+        )
+        print(
+            "t end:",
+            t[:, -1].min(),
+            t[:, -1].max()
+        )
+
+    if gesture_train.ndim != 3:
+        raise RuntimeError(
+            f"Expected shape (N, T, F), got {gesture_train.shape}"
+        )
+
+    if not np.isfinite(gesture_train).all():
+        raise RuntimeError(
+            "Training data contains NaN or Inf."
+        )
+
+    expected_features = 2 if config["mode"] == "interpolate" else 3
+
+    if gesture_train.shape[-1] != expected_features:
+        raise RuntimeError(
+            f"Mode '{config['mode']}' should produce "
+            f"{expected_features} features, "
+            f"got {gesture_train.shape[-1]}."
+        )
 
     condition_train, condition_val, condition_test = condition_splits
 
@@ -545,35 +595,6 @@ def main():
         f"Test conditions:  "
         f"{condition_test.shape}"
     )
-
-    # -------------------------------------------------------------------------
-    # Fixed-dt checks
-    # -------------------------------------------------------------------------
-
-    if config["mode"] != "interpolate":
-        raise RuntimeError(
-            "This run is currently intended for the "
-            "fixed-dt / interpolate experiment."
-        )
-
-    if gesture_train.ndim != 3:
-        raise RuntimeError(
-            f"Expected 3D training tensor, "
-            f"got {gesture_train.shape}"
-        )
-
-    if gesture_train.shape[2] != 2:
-        raise RuntimeError(
-            "Fixed-dt data should contain exactly "
-            f"(x, y), got {gesture_train.shape[2]} features."
-        )
-
-    if not np.isfinite(
-        gesture_train
-    ).all():
-        raise RuntimeError(
-            "Training data contains NaN or Inf."
-        )
 
     # -------------------------------------------------------------------------
     # Conditions -> DeepGAN labels
@@ -769,7 +790,7 @@ def main():
     print("=========================")
 
     train(
-        DeepGAN,
+        DeepNAG,
         deepgan_dataset,
         device,
     )
