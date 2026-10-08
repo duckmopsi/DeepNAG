@@ -55,15 +55,13 @@ class DeepNAG(ModelBase):
                                            betas=(self._opt.beta0, self._opt.beta1))
 
         # Loss-related objects
-        self.metric_names = ['loss_ed', 'loss_cos', 'loss_resample', 'loss']
+        self.metric_names = ['loss_ed', 'loss_cos', 'loss']
         self.loss_ed = None  # The ED loss value
         self.loss_cos = None  # The COS loss value
-        self.loss_resample = None  # The resample loss value
         self.loss = None  # The final loss that we'll minimize
         self._best_model_which_metric = 'loss'
 
         self._criterion_l1 = nn.L1Loss()
-        self._criterion_l2 = nn.MSELoss()
         self._criterion_ed = HausdorffDistance('sdtw-ed', 'ahd', self._num_classes, use_cuda=self._opt.use_cuda, sdtw_gamma=0.1)
         self._criterion_cos = HausdorffDistance('sdtw-cos', 'ahd', self._num_classes, use_cuda=self._opt.use_cuda, sdtw_gamma=0.1)
 
@@ -76,7 +74,6 @@ class DeepNAG(ModelBase):
         # Put everything in the correct device
         self._generator = torch.nn.DataParallel(self._generator).to(self._device)
         self._criterion_l1.to(self._device)
-        self._criterion_l2.to(self._device)
 
     def _make_another_batch(self, which_list, labels, uuid):
         """
@@ -125,22 +122,15 @@ class DeepNAG(ModelBase):
         #
         # Compute the COS loss
         #
-        hd_real_fake_cos = self._criterion_cos(real_1, fake_1, labels)
-        hd_real_real_cos = self._criterion_cos(real_1, real_2, labels)
-        hd_fake_fake_cos = self._criterion_cos(fake_1, fake_2_detached, labels)
+        hd_real_fake_cos = self._criterion_cos(real_1[..., :2], fake_1[..., :2], labels)
+        hd_real_real_cos = self._criterion_cos(real_1[..., :2], real_2[..., :2], labels)
+        hd_fake_fake_cos = self._criterion_cos(fake_1[..., :2], fake_2_detached[..., :2], labels)
         hd_global_cos = self._criterion_l1(hd_fake_fake_cos, hd_real_real_cos)
 
         self.loss_cos = hd_real_fake_cos + hd_global_cos
 
-        #
-        # Compute resample N loss to enforce equidistant points
-        #
-        between_point_dists = (fake_1[:, 1:, :] - fake_1[:, :-1, :]).norm(dim=2)
-        path_len = between_point_dists.sum(dim=1, keepdim=True)
-        target_between_point_dists = (path_len / self._opt.resample_n).expand_as(between_point_dists)
-        self.loss_resample = 1000 * self._criterion_l2(between_point_dists, target_between_point_dists)
-
-        self.loss = (self.loss_ed + self.loss_cos + self.loss_resample) / 3
+        #self.loss = (self.loss_ed + self.loss_cos + self.loss_resample) / 3
+        self.loss = (self.loss_ed + self.loss_cos) / 2
 
     def _run_one_epoch(self, epoch):
         """
