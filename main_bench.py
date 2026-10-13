@@ -792,11 +792,18 @@ def main():
     # Training
     # -------------------------------------------------------------------------
 
-    print("\nStarting DeepGAN training")
+    if opt.model == "DeepNAG":
+        model_t = DeepNAG
+    elif opt.model == "DeepGAN":
+        model_t = DeepGAN
+    else:
+        raise ValueError(f"Unknown model: {opt.model}")
+
+    print(f"\nStarting {opt.model} training")
     print("=========================")
 
     train(
-        DeepNAG,
+        model_t,
         deepgan_dataset,
         device,
     )
