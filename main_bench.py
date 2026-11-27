@@ -271,46 +271,25 @@ def install_preprocessing_debug_hook(dataset):
 # Split / labels
 # =============================================================================
 
-def prepare_data(dataset, seed=0, single_stroke=False):
+def prepare_data(datasets, single_stroke=False):
     """
     Same deterministic train/validation/test split as torch-diffusion.
     """
-    data = np.asarray(dataset.get_gestures())
+    data_splits = []
+    condition_splits = []
 
-    cond = np.asarray(
-        dataset.get_conditions(
-            ohe=True,
-            flatten=True,
-        )
-    )
+    for dataset in datasets:
+        data = np.asarray(dataset.get_gestures())
 
-    if single_stroke:
-        data = remove_first_dimension(data)
+        conditions = np.asarray(dataset.get_conditions(ohe=True, flatten=True))
 
-    rng = np.random.RandomState(seed)
-    idx = rng.permutation(len(data))
+        if single_stroke:
+            data = remove_first_dimension(data)
 
-    data = data[idx]
-    cond = cond[idx]
+        data_splits.append(data)
+        condition_splits.append(conditions)
 
-    n = len(data)
-
-    train_end = int(0.8 * n)
-    val_end = int(0.9 * n)
-
-    data_splits = (
-        data[:train_end],
-        data[train_end:val_end],
-        data[val_end:],
-    )
-
-    condition_splits = (
-        cond[:train_end],
-        cond[train_end:val_end],
-        cond[val_end:],
-    )
-
-    return data_splits, condition_splits
+    return tuple(data_splits), tuple(condition_splits)
 
 
 def extract_class_labels(conditions):
@@ -418,8 +397,6 @@ def main():
         False,
         config["class_dims"],
         config["condition_types"],
-        config["min_size"],
-        config["max_size"],
         config["min_strokes"],
         config["max_strokes"],
     )
@@ -441,8 +418,16 @@ def main():
 
     dataset = dataset.filter(
         config["class_filters"],
-        config["condition_indices"],
     )
+
+    timestamp_strategy = config.get("timestamp_conflict_strategy")
+
+    if timestamp_strategy is not None:
+        dataset, report = dataset.clean_timestamps(on_conflict=timestamp_strategy, warn=False, return_report=True)
+
+        print("Timestep cleanup:", report["summary"])
+
+    dataset = dataset.filter_by_size(min_size=config.get("min_size"), max_size=config.get("max_size"), max_time=config.get("max_time"))
 
     print(
         f"\nLoaded gestures after filtering: "
@@ -455,62 +440,25 @@ def main():
         target_length=config["num_points"],
     )
 
-    # -------------------------------------------------------------------------
-    # Install debug hook around pad_gestures()
-    # -------------------------------------------------------------------------
+    datasets = dataset.split(ratios=config["split_ratios"], seed=config["split_seed"], mode=config["split_mode"], participant_index=config["participant_index"])
 
-    dataset_class, original_pad_gestures = (
-        install_preprocessing_debug_hook(dataset)
-    )
+    for name, ds in zip(("Train", "Validation", "Test"), datasets):
+        participants = np.unique(ds.classes[:, config["participant_index"]])
 
-    # -------------------------------------------------------------------------
-    # Run exactly the same preprocessing pipeline as DDPM
-    # -------------------------------------------------------------------------
+        print(f"{name}: {len(ds)} gestures, {len(participants)} participants")
 
-    print("\nRunning build_dataset_pipeline()")
-    print("================================")
+    split_size_before = [len(ds) for ds in datasets]
 
-    try:
-        dataset = build_dataset_pipeline(
-            dataset,
-            representation=config["representation"],
-            mode=config["mode"],
-            num_points=config["num_points"],
-            dt=config["dt"],
-            normalize=config["normalize"],
-            pos_bounds=config.get("pos_bounds"),
-            velo_bounds=config.get("velo_bounds"),
-            time_bounds=config.get("time_bounds"),
-            pad_value=config["pad_value"],
-            min_size=config.get("min_size"),
-            max_size=config.get("max_size")
-        )
+    datasets = tuple(build_dataset_pipeline(ds, representation=config["representation"], mode=config["mode"], num_points=config["num_points"], dt=config["dt"], normalize=config["normalize"], pos_bounds=config.get("pos_bounds"), velo_bounds=config.get("velo_bounds"), time_bounds=config.get("time_bounds"), pad_value=config["pad_value"], min_size=config.get("min_size")) for ds in datasets)
 
-    finally:
-        # Restore original method even if preprocessing fails.
-        dataset_class.pad_gestures = original_pad_gestures
+    split_size_after = [len(ds) for ds in datasets]
 
-    # -------------------------------------------------------------------------
-    # If we get here, preprocessing succeeded
-    # -------------------------------------------------------------------------
+    print("Split size before preprocessing:", split_size_before)
+    print("Split size after preprocessing:", split_size_after)
 
-    print("\nbuild_dataset_pipeline() completed successfully.")
+    datasets = tuple(ds.filter(keep_condition_indices=config["condition_indices"]) for ds in datasets)
 
-    print_length_summary(
-        dataset.gestures,
-        "Gesture lengths AFTER complete preprocessing",
-        target_length=config["num_points"],
-    )
-
-    # -------------------------------------------------------------------------
-    # Same deterministic split as DDPM
-    # -------------------------------------------------------------------------
-
-    gesture_splits, condition_splits = prepare_data(
-        dataset,
-        seed=config["seed"],
-        single_stroke=True,
-    )
+    gesture_splits, condition_splits = prepare_data(datasets, single_stroke=True)
 
     gesture_train, gesture_val, gesture_test = gesture_splits
 

@@ -37,6 +37,7 @@ class Dataset:
     dataset_names = [
         'jk2017-kinect',
         'dollar-gds',
+        'prolific'
     ]
 
     @staticmethod
