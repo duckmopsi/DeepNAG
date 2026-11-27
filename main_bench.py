@@ -736,6 +736,20 @@ def main():
 
         print("\nUsing CPU")
 
+    batches_per_epoch = len(train_loader)
+
+    if opt.model == "DeepGAN":
+        print("\nDeepGAN epoch conversion")
+        print(f"Batches per epoch: {batches_per_epoch}")
+        print(f"Requested epochs: {opt.epochs}")
+        print(f"Checkpoint interval in epochs: {opt.checkpoint_frequency}")
+        
+        opt.epochs *= batches_per_epoch
+        opt.checkpoint_frequency *= batches_per_epoch
+
+        print(f"Total generator steps: {opt.epochs}")
+        print(f"Checkpoint interval in steps: {opt.checkpoint_frequency}")
+
     # -------------------------------------------------------------------------
     # Training
     # -------------------------------------------------------------------------
